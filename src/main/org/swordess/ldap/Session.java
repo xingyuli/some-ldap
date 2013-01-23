@@ -226,6 +226,10 @@ public interface Session {
      * names.
      * <p/>
      * 
+     * The value in the map will be a single String object if there is
+     * only one attribute value, otherwise it will be a List of String.
+     * <p/>
+     * 
      * Note:
      * <ul>
      * <li>Reference integrity is optional, so don't rely on <code>==</code> to
@@ -260,6 +264,10 @@ public interface Session {
     /**
      * Search for a bunch of entities via the given filter and returning
      * attribute names.
+     * <p/>
+     * 
+     * The value in the map will be a single String object if there is
+     * only one attribute value, otherwise it will be a List of String.
      * <p/>
      * 
      * Note:
@@ -298,6 +306,10 @@ public interface Session {
      * Search for a unique result via the given filter and returning attribute
      * names. If there are actually multiple results, the first one will be
      * returned.
+     * <p/>
+     * 
+     * The value in the map will be a single String object if there is
+     * only one attribute value, otherwise it will be a List of String.
      * <p/>
      * 
      * Note:

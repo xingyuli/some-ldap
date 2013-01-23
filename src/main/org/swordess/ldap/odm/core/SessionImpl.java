@@ -267,7 +267,15 @@ public class SessionImpl implements Session {
                 } else {
                     List propValues = (List) propValue;
                     if (!propValues.isEmpty()) {
-                        retVal.put(returningAttr, propValues);
+                    	if (!propMetaData.isReference()) {
+                    		retVal.put(returningAttr, propValues);
+                    	} else {
+                    		List simpleValues = new ArrayList();
+                    		for (Object referenceEntity : propValues) {
+                    			simpleValues.add(DnHelper.build(referenceEntity));
+                    		}
+                    		retVal.put(returningAttr, simpleValues);
+                    	}
                     }
                 }
             }
