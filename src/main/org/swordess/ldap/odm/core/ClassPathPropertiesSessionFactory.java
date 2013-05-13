@@ -20,7 +20,6 @@ package org.swordess.ldap.odm.core;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.AbstractMap;
 import java.util.HashMap;
 import java.util.Hashtable;
 import java.util.Map;
@@ -32,7 +31,6 @@ import javax.naming.ldap.Control;
 import javax.naming.ldap.InitialLdapContext;
 
 import org.swordess.ldap.Session;
-import org.swordess.ldap.SessionFactory;
 import org.swordess.ldap.odm.ODMException;
 
 
@@ -80,21 +78,19 @@ import org.swordess.ldap.odm.ODMException;
  * @author Liu Xingyu <xingyulliiuu@gmail.com>
  * 
  */
-public class DefaultSessionFactory implements SessionFactory {
+public class ClassPathPropertiesSessionFactory extends AbstractThreadLocalSessionFactory {
 
     private static final String DEFAULT_CONFIGURATION_FILENAME = "odm";
     private static final String DEFAULT_CONFIGURATION_FILE_TYPE = ".properties";
     
-    private static Map<String, DefaultSessionFactory> factories = new HashMap<String, DefaultSessionFactory>();
-    private static DefaultSessionFactory defaultFactory = null;
+    private static Map<String, ClassPathPropertiesSessionFactory> factories = new HashMap<String, ClassPathPropertiesSessionFactory>();
+    private static ClassPathPropertiesSessionFactory defaultFactory = null;
     
     private Hashtable<String, String> env = new Hashtable<String, String>();
     
-    private ThreadLocal<Map.Entry<Session, InitialLdapContext>> sessions = new ThreadLocal<Map.Entry<Session, InitialLdapContext>>();
-    
-    public DefaultSessionFactory(String configurationFileNameUnderClassPath) {
+    public ClassPathPropertiesSessionFactory(String configurationFileNameUnderClassPath) {
         Properties configuration = new Properties();
-        InputStream in = DefaultSessionFactory.class.getResourceAsStream("/" + configurationFileNameUnderClassPath);
+        InputStream in = ClassPathPropertiesSessionFactory.class.getResourceAsStream("/" + configurationFileNameUnderClassPath);
         try {
             configuration.load(in);
             in.close();
@@ -121,34 +117,8 @@ public class DefaultSessionFactory implements SessionFactory {
     }
     
     @Override
-    public Session openSession() {
-        try {
-            return new SessionImpl(this, openLdapContext(), false);
-        } catch (NamingException e) {
-            throw new ODMException("Cannot instantiate a session");
-        }
-    }
-    
-    /**
-     * Return the session which the current thread holds. If not exist, a new
-     * session will be created and bind to current thread.
-     * 
-     * @return
-     */
-    @Override
-    public Session getCurrentSession() {
-        Map.Entry<Session, InitialLdapContext> current = sessions.get();
-        if (null == current) {
-            try {
-                InitialLdapContext ldapConnection = openLdapContext();
-                Session session = new SessionImpl(this, ldapConnection, true);
-                current = new AbstractMap.SimpleEntry<Session, InitialLdapContext>(session, ldapConnection);
-                sessions.set(current);
-            } catch (NamingException e) {
-                throw new ODMException("Cannot instantiate a session", e);
-            }
-        }
-        return current.getKey();
+    protected InitialLdapContext getContext() throws NamingException {
+        return new InitialLdapContext(env, new Control[0]);
     }
     
     /**
@@ -157,9 +127,9 @@ public class DefaultSessionFactory implements SessionFactory {
      * 
      * @return
      */
-    public static DefaultSessionFactory getDefaultFactory() {
+    public static ClassPathPropertiesSessionFactory getInstance() {
         if (null == defaultFactory) {
-            return getDefaultFactory(DEFAULT_CONFIGURATION_FILENAME);
+            return getInstance(DEFAULT_CONFIGURATION_FILENAME);
         }
         return defaultFactory;
     }
@@ -177,37 +147,16 @@ public class DefaultSessionFactory implements SessionFactory {
      * @param configureFilenameWithoutExtension
      * @return
      */
-    public static DefaultSessionFactory getDefaultFactory(String configureFilenameWithoutExtension) {
-    	DefaultSessionFactory factory = factories.get(configureFilenameWithoutExtension);
+    public static ClassPathPropertiesSessionFactory getInstance(String configureFilenameWithoutExtension) {
+    	ClassPathPropertiesSessionFactory factory = factories.get(configureFilenameWithoutExtension);
     	if (factory == null) {
-    		factory = new DefaultSessionFactory(configureFilenameWithoutExtension + DEFAULT_CONFIGURATION_FILE_TYPE);
+    		factory = new ClassPathPropertiesSessionFactory(configureFilenameWithoutExtension + DEFAULT_CONFIGURATION_FILE_TYPE);
         	factories.put(configureFilenameWithoutExtension, factory);
         	if (DEFAULT_CONFIGURATION_FILENAME.equals(configureFilenameWithoutExtension)) {
         		defaultFactory = factory;
         	}
     	}
     	return factory;
-    }
-    
-    private InitialLdapContext openLdapContext() throws NamingException {
-        return new InitialLdapContext(env, new Control[0]);
-    }
-    
-    /* package */ void closeLdapContext(InitialLdapContext ctx) {
-        if (null != ctx) {
-            try {
-                ctx.close();
-            } catch (NamingException e) {
-            }
-        }
-    }
-    
-    /* package */ void closeCurrentSession() {
-        Map.Entry<Session, InitialLdapContext> current = sessions.get();
-        if (null != current) {
-            closeLdapContext(current.getValue());
-            sessions.set(null);
-        }
     }
     
     private static boolean isPoolConfiguration(String key) {

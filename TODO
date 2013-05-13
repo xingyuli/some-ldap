@@ -1,6 +1,4 @@
 
 ## do not impact other session factory's configuration
 
-## add support for construct a SessionFactory via a ContextProvider
-
 ## javadoc Indirections related java source files

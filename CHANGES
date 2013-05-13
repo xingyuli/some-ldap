@@ -1,0 +1,7 @@
+
+# v0.2
+1. Possible to describe attribute based relationships.
+2. Syntax mechanism to convert between Java String and LDAP string.
+3. Add a second implementation for SessionFacoty. This new implementation
+support construct a SessionFactory via a ContextProvider. It is designed to be
+used when integrated to an existed java application.

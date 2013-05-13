@@ -65,11 +65,11 @@ public class SessionImpl implements Session {
     
     private Map<String, Object> sessionCache = new HashMap<String, Object>();
     
-    private final DefaultSessionFactory sessionFactory;
+    private final AbstractThreadLocalSessionFactory sessionFactory;
     private final InitialLdapContext ctx;
     private final boolean bindToThreadLocal;
     
-    SessionImpl(DefaultSessionFactory sessionFactory, InitialLdapContext ctx, boolean bindToThreadLocal) {
+    SessionImpl(AbstractThreadLocalSessionFactory sessionFactory, InitialLdapContext ctx, boolean bindToThreadLocal) {
     	this.sessionFactory = sessionFactory;
         this.ctx = ctx;
         this.bindToThreadLocal = bindToThreadLocal;

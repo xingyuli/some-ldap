@@ -18,11 +18,8 @@
  */
 package org.swordess.ldap;
 
-import org.swordess.ldap.odm.core.DefaultSessionFactory;
 
 /**
- * Currently we have only one implementation, {@link DefaultSessionFactory}.
- * 
  * @author Liu Xingyu <xingyulliiuu@gmail.com>
  */
 public interface SessionFactory {
@@ -87,5 +84,7 @@ public interface SessionFactory {
      * @return
      */
     public Session getCurrentSession();
+    
+    public void closeCurrentSession();
 
 }
