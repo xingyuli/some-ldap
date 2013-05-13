@@ -1,16 +1,6 @@
-## support for binary data userPassword
-
-JAVA -> LDAP:
-create - fromTransientToAttributes
-update - fromEntityToModificationItems
-
-LDAP -> JAVA:
-read   - fromAttributesToEntity
-         & another read method
-search - fromAttributesToEntity
-         & another search method
-
 
 ## do not impact other session factory's configuration
 
 ## add support for construct a SessionFactory via a ContextProvider
+
+## javadoc Indirections related java source files

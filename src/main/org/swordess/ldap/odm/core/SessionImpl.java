@@ -649,7 +649,7 @@ public class SessionImpl implements Session {
         EntityMetaData metaData = EntityMetaData.get(ClassHelper.actualClass(obj));
         Attributes toSaves = new BasicAttributes();
         for (EntityPropertyMetaData propMetaData : metaData) {
-            Object propValue = propMetaData.getter().get(obj);
+        	Object propValue = propMetaData.getter().get(obj);
             if (propValue == null) {
                 continue;
             }
@@ -672,6 +672,8 @@ public class SessionImpl implements Session {
                         return DnHelper.build((String)idValue, metaDataOfReferenceProp.getManagedClass());
                     }
                 };
+            } else {
+            	evaluator = createPropEvaluator(propMetaData);
             }
             
             if (!propMetaData.isMultiple()) {
@@ -704,8 +706,7 @@ public class SessionImpl implements Session {
                 if (null == propValue) {
                     mods.add(ModUtils.remove(propMetaData.getLdapPropName()));
                 } else {
-                    Evaluator<String> evaluator = propMetaData.isReference() ? DN_EVALUATOR : null;
-                    CollectionUtils.addIfNotNull(mods, ModUtils.replace(propMetaData.getLdapPropName(), propValue, evaluator));
+                    CollectionUtils.addIfNotNull(mods, ModUtils.replace(propMetaData.getLdapPropName(), propValue, createPropEvaluator(propMetaData)));
                 }
             }
         }
@@ -720,7 +721,7 @@ public class SessionImpl implements Session {
             if (null == propValues) {
                 mods.add(ModUtils.remove(propMetaData.getLdapPropName()));
             } else {
-                Evaluator<String> evaluator = propMetaData.isReference() ? DN_EVALUATOR : null;
+                Evaluator<String> evaluator = createPropEvaluator(propMetaData);
                 if (propValues instanceof MoniteredList) {
                     MoniteredList moniteredList = (MoniteredList) propValues;
                     CollectionUtils.addIfNotNull(mods, ModUtils.add(propMetaData.getLdapPropName(), moniteredList.getAddedElements(), evaluator));
@@ -766,12 +767,7 @@ public class SessionImpl implements Session {
                 } else {
                     List<String> attrValues = new ArrayList<String>();
                     for (NamingEnumeration<?> all = attr.getAll(); all.hasMore();) {
-                        /*
-                         * TODO Currently, we treat all attribute values as
-                         * string. But once there are any binary data, we need
-                         * to fulfill that situation.
-                         */
-                        attrValues.add(all.next().toString());
+                        attrValues.add(propMetaData.getSyntaxer().ldapStringToJavaString(all.next().toString()));
                     }
     
                     if (!propMetaData.isReference()) {
@@ -849,7 +845,7 @@ public class SessionImpl implements Session {
                 
                 List<String> attrValues = new ArrayList<String>();
                 for (NamingEnumeration<?> all = attr.getAll(); all.hasMore();) {
-                    attrValues.add(all.next().toString());
+                    attrValues.add(propMetaData.getSyntaxer().ldapStringToJavaString(all.next().toString()));
                 }
                 
                 if (!propMetaData.isMultiple()) {
@@ -905,13 +901,23 @@ public class SessionImpl implements Session {
     }
     
     private static final Evaluator<String> DN_EVALUATOR = new Evaluator<String>() {
-
         @Override
         public String eval(Object obj) {
             return DnHelper.build(obj);
         }
-
     };
+    
+    private static Evaluator<String> createPropEvaluator(final EntityPropertyMetaData propMetaData) {
+    	if (propMetaData.isReference()) {
+    		return DN_EVALUATOR;
+    	} else {
+    		return new Evaluator<String>() {
+    			public String eval(Object obj) {
+    				return propMetaData.getSyntaxer().javaStringToLdapString(String.valueOf(obj));
+    			}
+    		};
+    	}
+    }
     
     /**
      * An interface which marks an object as persistent. Client code should not

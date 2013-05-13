@@ -8,6 +8,8 @@ import java.lang.reflect.Type;
 import java.util.List;
 import java.util.Set;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.swordess.ldap.bean.Getter;
 import org.swordess.ldap.bean.Setter;
 import org.swordess.ldap.bean.Specification;
@@ -16,6 +18,8 @@ import org.swordess.ldap.odm.annotation.Entry;
 
 public class RawPropertyMetaData implements RawPropertyMetaDataInterface {
 
+	protected Log log = LogFactory.getLog(getClass());
+	
 	private Getter getter;
     private Setter setter;
     

@@ -22,12 +22,17 @@ import java.lang.reflect.Method;
 
 import org.swordess.ldap.odm.annotation.Attribute;
 import org.swordess.ldap.odm.annotation.Id;
+import org.swordess.ldap.odm.annotation.Syntax;
+import org.swordess.ldap.odm.annotation.Syntax.StringSyntaxer;
+import org.swordess.ldap.odm.annotation.Syntax.Syntaxer;
 import org.swordess.ldap.odm.metadata.RawPropertyMetaData;
+import org.swordess.ldap.util.LogUtils;
 
 
 public class EntityPropertyMetaData extends RawPropertyMetaData {
 
 	private String ldapPropName;
+	private Syntaxer syntaxer;
     private boolean isId;
     private boolean isReadonly;
     
@@ -37,11 +42,27 @@ public class EntityPropertyMetaData extends RawPropertyMetaData {
     	// initialize ldapPropName
         determineLdapPropName(getterMethod);
         
+        // initialize syntaxer 
+        determineSyntaxer(getterMethod);
+        
         isId = getterMethod.isAnnotationPresent(Id.class);
         if (getterMethod.isAnnotationPresent(Attribute.class)) {
             isReadonly = getterMethod.getAnnotation(Attribute.class).readonly();
         }
     }
+
+	private void determineSyntaxer(Method getterMethod) {
+		Syntax syntax = getterMethod.getAnnotation(Syntax.class);
+		if (null != syntax) {
+        	try {
+				syntaxer = syntax.value().newInstance();
+			} catch (Throwable t) {
+				LogUtils.error(log, "unable to instantiate Syntaxer " + syntax.value(), t);
+			}
+        } else {
+        	syntaxer = new StringSyntaxer();
+        }
+	}
     
     private void determineLdapPropName(Method getterMethod) {
         if (getterMethod.isAnnotationPresent(Id.class)) {
@@ -69,6 +90,10 @@ public class EntityPropertyMetaData extends RawPropertyMetaData {
     public String getLdapPropName() {
 		return ldapPropName;
 	}
+    
+    public Syntaxer getSyntaxer() {
+    	return syntaxer;
+    }
 
 	public boolean isId() {
         return isId;
@@ -80,8 +105,8 @@ public class EntityPropertyMetaData extends RawPropertyMetaData {
     
     @Override
     public String toString() {
-        return String.format("ldapPropName=%s | javaBeanPropName=%s | valueClass=%s | isId=%s | isMultiple=%s | isReference=%s | isReadonly=%s",
-                getLdapPropName(), getJavaBeanPropName(), getValueClass(), isId(), isMultiple(), isReference(), isReadonly());
+        return String.format("ldapPropName=%s | javaBeanPropName=%s | valueClass=%s | syntaxer=%s | isId=%s | isMultiple=%s | isReference=%s | isReadonly=%s",
+                getLdapPropName(), getJavaBeanPropName(), getValueClass(), syntaxer.getName(), isId(), isMultiple(), isReference(), isReadonly());
     }
     
 }
