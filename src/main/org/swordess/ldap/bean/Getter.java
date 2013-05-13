@@ -31,7 +31,7 @@ import java.lang.reflect.Method;
  * @author Liu Xingyu <xingyulliiuu@gmail.com>
  * 
  */
-public class Getter {
+public class Getter<T> {
 
     private final Method getter;
     
@@ -39,9 +39,10 @@ public class Getter {
         this.getter = getter;
     }
     
-    public Object get(Object target) {
+    @SuppressWarnings("unchecked")
+	public T get(Object target) {
         try {
-            return getter.invoke(target);
+            return (T) getter.invoke(target);
         } catch (Exception e) {
             throw new ReflectionException("failed to invoke getter", e);
         }
