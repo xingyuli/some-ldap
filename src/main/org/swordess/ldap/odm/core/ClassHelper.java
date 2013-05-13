@@ -24,6 +24,10 @@ import net.sf.cglib.proxy.Enhancer;
 
 public class ClassHelper {
 
+	public static Class actualClass(Object obj) {
+		return null != obj ? actualClass(obj.getClass()) : null;
+	}
+	
     public static Class actualClass(Class clazz) {
         return Enhancer.isEnhanced(clazz) ? clazz.getSuperclass() : clazz;
     }

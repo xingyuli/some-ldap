@@ -16,7 +16,7 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with Swordess-ldap. If not, see <http://www.gnu.org/licenses/>.
  */
-package org.swordess.ldap.odm.metadata;
+package org.swordess.ldap.odm.metadata.entity;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -33,11 +33,12 @@ import org.swordess.ldap.odm.annotation.Attribute;
 import org.swordess.ldap.odm.annotation.Entry;
 import org.swordess.ldap.odm.annotation.Id;
 import org.swordess.ldap.odm.annotation.Transient;
+import org.swordess.ldap.odm.metadata.MetaDataException;
 import org.swordess.ldap.util.LogUtils;
 
 
 
-public class EntityMetaData implements Iterable<PropertyMetaData> {
+public class EntityMetaData implements Iterable<EntityPropertyMetaData> {
 
     private static final Log LOG = LogFactory.getLog(EntityMetaData.class);
 
@@ -55,10 +56,10 @@ public class EntityMetaData implements Iterable<PropertyMetaData> {
      */
     private String[] objectClasses;
     
-    private PropertyMetaData idProperty;
+    private EntityPropertyMetaData idProperty;
     
-    private Map<String, PropertyMetaData> ldapPropNameToMetaData = new HashMap<String, PropertyMetaData>();
-    private Map<String, PropertyMetaData> javaBeanPropNameToMetaData = new HashMap<String, PropertyMetaData>();
+    private Map<String, EntityPropertyMetaData> ldapPropNameToMetaData = new HashMap<String, EntityPropertyMetaData>();
+    private Map<String, EntityPropertyMetaData> javaBeanPropNameToMetaData = new HashMap<String, EntityPropertyMetaData>();
     
     // cache all defined attribute names in order not to create the same array
     private String[] allDefinedAttrNames;
@@ -90,7 +91,7 @@ public class EntityMetaData implements Iterable<PropertyMetaData> {
                 continue;
             }
             
-            PropertyMetaData currentPropertyMetaData = new PropertyMetaData(m);
+            EntityPropertyMetaData currentPropertyMetaData = new EntityPropertyMetaData(m);
             if (currentPropertyMetaData.isId()) {
                 if (null != idProperty) {
                     throw new MetaDataException(String.format("You must have only one method with the %s annotation in class %s",
@@ -113,7 +114,7 @@ public class EntityMetaData implements Iterable<PropertyMetaData> {
     }
 
     @Override
-    public Iterator<PropertyMetaData> iterator() {
+    public Iterator<EntityPropertyMetaData> iterator() {
         return ldapPropNameToMetaData.values().iterator();
     }
     
@@ -129,22 +130,22 @@ public class EntityMetaData implements Iterable<PropertyMetaData> {
         return objectClasses;
     }
     
-    public PropertyMetaData getIdProperty() {
+    public EntityPropertyMetaData getIdProperty() {
         return idProperty;
     }
     
-    public PropertyMetaData getProperty(String ldapPropName) {
+    public EntityPropertyMetaData getProperty(String ldapPropName) {
         return ldapPropNameToMetaData.get(ldapPropName);
     }
     
-    public PropertyMetaData getPropertyByJavaBeanPropName(String javaBeanPropName) {
+    public EntityPropertyMetaData getPropertyByJavaBeanPropName(String javaBeanPropName) {
         return javaBeanPropNameToMetaData.get(javaBeanPropName);
     }
     
     @Override
     public String toString() {
         StringBuilder propertiesInfo = new StringBuilder();
-        for (PropertyMetaData propertyMetaData : this) {
+        for (EntityPropertyMetaData propertyMetaData : this) {
             propertiesInfo.append("\n");
             propertiesInfo.append(propertyMetaData);
         }

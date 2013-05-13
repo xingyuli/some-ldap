@@ -21,6 +21,7 @@ package org.swordess.ldap.odm.core;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.AbstractMap;
+import java.util.HashMap;
 import java.util.Hashtable;
 import java.util.Map;
 import java.util.Properties;
@@ -73,6 +74,7 @@ import org.swordess.ldap.odm.ODMException;
  * java.naming.security.principal = ...
  * java.naming.security.credentials = ...
  * java.naming.ldap.version = 3
+ * 
  * </pre>
  * 
  * @author Liu Xingyu <xingyulliiuu@gmail.com>
@@ -80,8 +82,10 @@ import org.swordess.ldap.odm.ODMException;
  */
 public class DefaultSessionFactory implements SessionFactory {
 
-    private static final String DEFAULT_CONFIGURATION_FILENAME = "odm.properties";
+    private static final String DEFAULT_CONFIGURATION_FILENAME = "odm";
+    private static final String DEFAULT_CONFIGURATION_FILE_TYPE = ".properties";
     
+    private static Map<String, DefaultSessionFactory> factories = new HashMap<String, DefaultSessionFactory>();
     private static DefaultSessionFactory defaultFactory = null;
     
     private Hashtable<String, String> env = new Hashtable<String, String>();
@@ -97,6 +101,11 @@ public class DefaultSessionFactory implements SessionFactory {
             
             for (Object key : configuration.keySet()) {
                 String keyStr = (String) key;
+                /*
+                 * TODO Solve multiple factory instances issue, so that each
+                 * pool related of this factory is isolated with other
+                 * factories?? 
+                 */
                 if (isPoolConfiguration(keyStr)) {
                     System.setProperty(keyStr, configuration.getProperty(keyStr));
                 } else {
@@ -114,7 +123,7 @@ public class DefaultSessionFactory implements SessionFactory {
     @Override
     public Session openSession() {
         try {
-            return new SessionImpl(openLdapContext(), false);
+            return new SessionImpl(this, openLdapContext(), false);
         } catch (NamingException e) {
             throw new ODMException("Cannot instantiate a session");
         }
@@ -132,7 +141,7 @@ public class DefaultSessionFactory implements SessionFactory {
         if (null == current) {
             try {
                 InitialLdapContext ldapConnection = openLdapContext();
-                Session session = new SessionImpl(ldapConnection, true);
+                Session session = new SessionImpl(this, ldapConnection, true);
                 current = new AbstractMap.SimpleEntry<Session, InitialLdapContext>(session, ldapConnection);
                 sessions.set(current);
             } catch (NamingException e) {
@@ -150,9 +159,34 @@ public class DefaultSessionFactory implements SessionFactory {
      */
     public static DefaultSessionFactory getDefaultFactory() {
         if (null == defaultFactory) {
-            defaultFactory = new DefaultSessionFactory(DEFAULT_CONFIGURATION_FILENAME);
+            return getDefaultFactory(DEFAULT_CONFIGURATION_FILENAME);
         }
         return defaultFactory;
+    }
+    
+    /**
+     * Get the session factory using the specified configuration filename.
+     * 
+     * NOTE: The filename should not include the file type as we use
+     * ".properties" as the file type internally.
+     * 
+     * e.g., if the <tt>configureFilenameWithoutExtension</tt> is passed as
+     * "myOdm", this will return the factory using myOdm.properties as its
+     * configuration file.
+     *  
+     * @param configureFilenameWithoutExtension
+     * @return
+     */
+    public static DefaultSessionFactory getDefaultFactory(String configureFilenameWithoutExtension) {
+    	DefaultSessionFactory factory = factories.get(configureFilenameWithoutExtension);
+    	if (factory == null) {
+    		factory = new DefaultSessionFactory(configureFilenameWithoutExtension + DEFAULT_CONFIGURATION_FILE_TYPE);
+        	factories.put(configureFilenameWithoutExtension, factory);
+        	if (DEFAULT_CONFIGURATION_FILENAME.equals(configureFilenameWithoutExtension)) {
+        		defaultFactory = factory;
+        	}
+    	}
+    	return factory;
     }
     
     private InitialLdapContext openLdapContext() throws NamingException {

@@ -26,6 +26,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 
 import javax.naming.NameNotFoundException;
 import javax.naming.NamingEnumeration;
@@ -44,9 +45,12 @@ import org.apache.commons.logging.LogFactory;
 import org.swordess.ldap.Session;
 import org.swordess.ldap.SessionException;
 import org.swordess.ldap.odm.Distinguishable;
-import org.swordess.ldap.odm.core.ProxyFactory.SetterInterceptor;
-import org.swordess.ldap.odm.metadata.EntityMetaData;
-import org.swordess.ldap.odm.metadata.PropertyMetaData;
+import org.swordess.ldap.odm.core.EntityProxyFactory.SetterInterceptor;
+import org.swordess.ldap.odm.metadata.entity.EntityMetaData;
+import org.swordess.ldap.odm.metadata.entity.EntityPropertyMetaData;
+import org.swordess.ldap.odm.metadata.indirections.IndirectionsMetaData;
+import org.swordess.ldap.odm.metadata.indirections.OneMetaData;
+import org.swordess.ldap.odm.metadata.indirections.TheOtherMetaData;
 import org.swordess.ldap.util.AttrUtils;
 import org.swordess.ldap.util.CollectionUtils;
 import org.swordess.ldap.util.Evaluator;
@@ -61,10 +65,12 @@ public class SessionImpl implements Session {
     
     private Map<String, Object> sessionCache = new HashMap<String, Object>();
     
+    private final DefaultSessionFactory sessionFactory;
     private final InitialLdapContext ctx;
     private final boolean bindToThreadLocal;
     
-    SessionImpl(InitialLdapContext ctx, boolean bindToThreadLocal) {
+    SessionImpl(DefaultSessionFactory sessionFactory, InitialLdapContext ctx, boolean bindToThreadLocal) {
+    	this.sessionFactory = sessionFactory;
         this.ctx = ctx;
         this.bindToThreadLocal = bindToThreadLocal;
     }
@@ -105,6 +111,29 @@ public class SessionImpl implements Session {
     }
     
     @Override
+    public void createIndirections(Object indirections) {
+    	if (null == indirections) {
+    		return;
+    	}
+    	
+    	if (indirections instanceof Persistent) {
+    		updateIndirections(indirections);
+    		return;
+    	}
+    	
+    	IndirectionsMetaData metaData = IndirectionsMetaData.get(indirections.getClass());
+    	String one = metaData.getOne().getter().get(indirections);
+    	List<String> theOther = metaData.getTheOther().getter().get(indirections);
+    	
+    	if (StringUtils.isEmpty(one) || CollectionUtils.isEmpty(theOther)) {
+    		LogUtils.debug(LOG, "either one or theOthere is empty, do nothing");
+    		return;
+    	}
+    	
+    	connectIndirections(metaData, one, theOther);
+    }
+    
+    @Override
     public void update(Object entity) {
         if (null == entity) {
             return;
@@ -137,8 +166,8 @@ public class SessionImpl implements Session {
              * 1. clear changes of all the modified MonitoredList
              * 2. turn normal List into MonitoredList
              */
-            ProxyFactory.getModifiedPropNames(entity).clear();
-            for (PropertyMetaData propMetaData : EntityMetaData.get(ClassHelper.actualClass(entity.getClass()))) {
+            EntityProxyFactory.getModifiedPropNames(entity).clear();
+            for (EntityPropertyMetaData propMetaData : EntityMetaData.get(ClassHelper.actualClass(entity))) {
                 if (propMetaData.isReadonly() || !propMetaData.isMultiple()) {
                     continue;
                 }
@@ -169,6 +198,85 @@ public class SessionImpl implements Session {
     }
     
     @Override
+    public void updateIndirections(Object indirections) {
+    	if (null == indirections) {
+    		return;
+    	}
+    	
+    	if (!(indirections instanceof Persistent)) {
+    		createIndirections(indirections);
+    		return;
+    	}
+    	
+    	IndirectionsMetaData metaData = IndirectionsMetaData.get(ClassHelper.actualClass(indirections));
+    	String one = metaData.getOne().getter().get(indirections);
+    	List<String> theOther = metaData.getTheOther().getter().get(indirections);
+    	
+    	String originalOne = IndirectionsProxyFactory.getOriginalOne(indirections);
+    	List<String> originalTheOther = IndirectionsProxyFactory.getOriginalTheOther(indirections);
+    	
+    	if (StringUtils.isEmpty(one) || CollectionUtils.isEmpty(theOther)) {
+        	if (StringUtils.isEmpty(one) && CollectionUtils.isEmpty(theOther)) {
+        		LogUtils.debug(LOG, "both one and theOther of " + indirections + " are empty");
+        	}
+        	disconnectIndirections(metaData, originalOne, originalTheOther);
+        	
+    	} else {
+    		if (one.equals(originalOne)) {
+    			List<String> removed, added;
+    			if (theOther instanceof MoniteredList) {
+    				MoniteredList<String> monitered = (MoniteredList<String>) theOther;
+    				removed = monitered.getRemovedElements();
+    				added = monitered.getAddedElements();
+    			} else {
+    				removed = new ArrayList<String>(originalTheOther);
+    				removed.removeAll(theOther);
+    				added = new ArrayList<String>(theOther);
+    				added.removeAll(originalTheOther);
+    			}
+    			
+    			if (!CollectionUtils.isEmpty(removed)) {
+					disconnectIndirections(metaData, one, removed);
+				}
+				if (!CollectionUtils.isEmpty(added)) {
+					connectIndirections(metaData, one, added);
+				}
+    			
+    		} else {
+    			disconnectIndirections(metaData, originalOne, originalTheOther);
+    			connectIndirections(metaData, one, theOther);
+    		}
+
+        	IndirectionsProxyFactory.refreshOriginals(indirections);
+        	if (null != theOther) {
+        		if (theOther instanceof MoniteredList) {
+            		((MoniteredList)theOther).clearChanges();
+            	} else {
+            		metaData.getTheOther().setter().set(indirections, new MoniteredList(theOther));
+            	}
+        	}
+    	}
+    }
+
+    @Override
+    public void delete(String dn) {
+        if (StringUtils.isEmpty(dn)) {
+            return;
+        }
+        
+        LogUtils.debug(LOG, "delete dn=" + dn);
+        
+        try {
+            ctx.unbind(dn);
+            sessionCache.remove(dn);
+        } catch (NameNotFoundException ignore) {
+            LogUtils.debug(LOG, "Name not found: " + dn);
+        } catch (NamingException e) {
+            throw new SessionException(e.getMessage(), e);
+        }
+    }
+    
+    @Override
     public void delete(Object entity) {
         if (null == entity) {
             return;
@@ -189,23 +297,26 @@ public class SessionImpl implements Session {
             throw new SessionException(e.getMessage(), e);
         }
     }
-    
+
     @Override
-    public void delete(String dn) {
-        if (StringUtils.isEmpty(dn)) {
-            return;
-        }
-        
-        LogUtils.debug(LOG, "delete dn=" + dn);
-        
-        try {
-            ctx.unbind(dn);
-            sessionCache.remove(dn);
-        } catch (NameNotFoundException ignore) {
-            LogUtils.debug(LOG, "Name not found: " + dn);
-        } catch (NamingException e) {
-            throw new SessionException(e.getMessage(), e);
-        }
+    public void deleteIndirections(Object indirections) {
+    	if (null == indirections) {
+    		return;
+    	}
+    	
+    	IndirectionsMetaData metaData = IndirectionsMetaData.get(ClassHelper.actualClass(indirections));
+    	String one;
+    	List<String> theOther;
+    	
+    	if (indirections instanceof Persistent) {
+    		one = IndirectionsProxyFactory.getOriginalOne(indirections);
+        	theOther = IndirectionsProxyFactory.getOriginalTheOther(indirections);
+    	} else {
+    		one = metaData.getOne().getter().get(indirections);
+        	theOther = metaData.getTheOther().getter().get(indirections);
+    	}
+    	
+    	disconnectIndirections(metaData, one, theOther);
     }
     
     @SuppressWarnings("unchecked")
@@ -252,7 +363,7 @@ public class SessionImpl implements Session {
             
             EntityMetaData metaData = EntityMetaData.get(clazz);
             for (String returningAttr : returningAttrs) {
-                PropertyMetaData propMetaData = metaData.getProperty(returningAttr);
+                EntityPropertyMetaData propMetaData = metaData.getProperty(returningAttr);
                 if (null == propMetaData) {
                     continue;
                 }
@@ -356,6 +467,87 @@ public class SessionImpl implements Session {
             throw new SessionException(e.getMessage(), e);
         }
     }
+    
+    @Override
+    public List<Map<String, Object>> search(String context, String filter, String[] returningAttrs) {
+    	if (null == filter) {
+    		return null;
+    	}
+    	
+    	LogUtils.debug(LOG, String.format("search %s with filter=%s, returningAttrs=%s",
+    			context, filter, Arrays.toString(returningAttrs)));
+    	
+    	SearchControls ctrl = new SearchControls();
+    	ctrl.setSearchScope(SearchControls.SUBTREE_SCOPE);
+    	ctrl.setReturningAttributes(returningAttrs);
+    	    	
+    	try {
+    		List<Map<String, Object>> retVal = new ArrayList<Map<String,Object>>();
+    		NamingEnumeration<SearchResult> results = ctx.search(context, filter, ctrl);
+    		while (results.hasMore()) {
+    			try {
+    				SearchResult result = results.next();
+    				retVal.add(fromAttributesToMap(result.getAttributes()));
+    			} catch (NamingException e) {
+    				LogUtils.error(LOG, "Unable to construct the map", e);
+    			}
+    		}
+    		return retVal;
+    	} catch (NamingException e) {
+    		throw new SessionException(e.getMessage(), e);
+    	}
+    }
+    
+    public List<String> lookup(String context, String filter) {
+    	if (null == filter) {
+    		return null;
+    	}
+    	
+    	LogUtils.debug(LOG, String.format("search DNs with context=%s, filter=%s",
+    		context, filter));
+    	
+    	SearchControls ctrl = new SearchControls();
+    	ctrl.setSearchScope(SearchControls.SUBTREE_SCOPE);
+    	ctrl.setReturningAttributes(new String[] {});
+    	
+    	try {
+    		List<String> retVal = new ArrayList<String>();
+    		NamingEnumeration<SearchResult> results = ctx.search(context, filter, ctrl); 
+    		while (results.hasMore()) {
+    			retVal.add(results.next().getNameInNamespace());
+    		}
+    		return retVal;
+    	} catch (NamingException e) {
+    		throw new SessionException(e.getMessage(), e);
+    	}
+    }
+
+    @Override
+    public <T> List<T> searchIndirections(Class<T> clazz, String filter) {
+    	if (null == filter) {
+    		return null;
+    	}
+    	
+    	LogUtils.debug(LOG, String.format("search %s with filter=%s", clazz.getName(), filter));
+    	
+    	OneMetaData oneMetaData = IndirectionsMetaData.get(clazz).getOne();
+    	
+    	SearchControls ctrl = new SearchControls();
+    	ctrl.setSearchScope(SearchControls.SUBTREE_SCOPE);
+    	ctrl.setReturningAttributes(new String[] { oneMetaData.getIdAttr(), oneMetaData.getIndirectionAttr() });
+    	
+    	try {
+    		List<T> retVal = new ArrayList<T>();
+    		NamingEnumeration<SearchResult> results = ctx.search(oneMetaData.getContext(), filter, ctrl);
+    		while (results.hasMore()) {
+				SearchResult result = results.next();
+				retVal.add(fromAttributesToIndirections(clazz, result.getAttributes()));
+    		}
+    		return retVal;
+    	} catch (NamingException e) {
+    		throw new SessionException(e.getMessage(), e);
+    	}
+    }
 
     @Override
     public <T> T uniqueSearch(Class<T> clazz, String filter) {
@@ -365,6 +557,11 @@ public class SessionImpl implements Session {
     @Override
     public Map<String, Object> uniqueSearch(Class<?> clazz, String filter, String[] returningAttrs) {
         return unique(search(clazz, filter, returningAttrs));
+    }
+    
+    @Override
+    public <T> T uniqueSearchIndirections(Class<T> clazz, String filter) {
+    	return unique(searchIndirections(clazz, filter));
     }
     
     private static <T> T unique(List<T> list) {
@@ -380,16 +577,78 @@ public class SessionImpl implements Session {
         
         // release the internal JNDI connection
         if (bindToThreadLocal) {
-            DefaultSessionFactory.getDefaultFactory().closeCurrentSession();
+            sessionFactory.closeCurrentSession();
         } else {
-            DefaultSessionFactory.getDefaultFactory().closeLdapContext(ctx);
+            sessionFactory.closeLdapContext(ctx);
         }
     }
+    
+    private void connectIndirections(IndirectionsMetaData metaData, String oneDN, List<String> theOtherDNs) {
+    	if (StringUtils.isEmpty(oneDN) || CollectionUtils.isEmpty(theOtherDNs)) {
+    		LogUtils.debug(LOG, "connectIndirections: either one or theOther is empty, do nothing.");
+    		return;
+    	}
+    	
+    	LogUtils.debug(LOG, "connect " + oneDN + " and " + theOtherDNs);
+    	
+    	try {
+    		ctx.modifyAttributes(oneDN, new ModificationItem[] {
+    			ModUtils.add(metaData.getOne().getIndirectionAttr(), theOtherDNs)
+    		});
+    		LogUtils.debug(LOG, String.format("connected: %s -> %s", oneDN, theOtherDNs));
+    		
+    		for (String theOtherDN : theOtherDNs) {
+    			String indirectionAttr = metaData.getTheOther().dnToIndirectionAttr(theOtherDN);
+    			if (null == indirectionAttr) {
+    				LogUtils.debug(LOG, "no corresponding indirection configured for " + theOtherDN);
+    				continue;
+    			}
+    			
+    			ctx.modifyAttributes(theOtherDN, new ModificationItem[] {
+    				ModUtils.add(indirectionAttr, oneDN)
+    			});
+    			LogUtils.debug(LOG, String.format("connected: %s -> %s", theOtherDN, oneDN));
+    		}
+    	} catch (NamingException e) {
+    		throw new SessionException(e.getMessage(), e);
+    	}
+    }
+    
+    private void disconnectIndirections(IndirectionsMetaData metaData, String oneDN, List<String> theOtherDNs) {
+    	if (StringUtils.isEmpty(oneDN) || CollectionUtils.isEmpty(theOtherDNs)) {
+    		LogUtils.debug(LOG, "disconnectIndirections: either one or theOther is empty, do nothing.");
+    		return;
+    	}
+    	
+		LogUtils.debug(LOG, "disconnect " + oneDN + " and " + theOtherDNs);
 
+		try {
+			ctx.modifyAttributes(oneDN, new ModificationItem[] {
+				ModUtils.remove(metaData.getOne().getIndirectionAttr(), theOtherDNs)
+			});
+			LogUtils.debug(LOG, String.format("disconnected: %s -> %s", oneDN, theOtherDNs));
+			
+			for (String theOtherDN : theOtherDNs) {
+				String indirectionAttr = metaData.getTheOther().dnToIndirectionAttr(theOtherDN);
+    			if (null == indirectionAttr) {
+    				LogUtils.debug(LOG, "no corresponding indirection configured for " + theOtherDN);
+    				continue;
+    			}
+				
+				ctx.modifyAttributes(theOtherDN, new ModificationItem[] {
+					ModUtils.remove(indirectionAttr, oneDN)
+				});
+				LogUtils.debug(LOG, String.format("disconnected: %s -> %s", theOtherDN, oneDN));
+			}
+		} catch (NamingException e) {
+			throw new SessionException(e.getMessage(), e);
+		}
+    }
+    
     private static Attributes fromTransientToAttributes(Object obj) {
-        EntityMetaData metaData = EntityMetaData.get(ClassHelper.actualClass(obj.getClass()));
+        EntityMetaData metaData = EntityMetaData.get(ClassHelper.actualClass(obj));
         Attributes toSaves = new BasicAttributes();
-        for (PropertyMetaData propMetaData : metaData) {
+        for (EntityPropertyMetaData propMetaData : metaData) {
             Object propValue = propMetaData.getter().get(obj);
             if (propValue == null) {
                 continue;
@@ -429,14 +688,14 @@ public class SessionImpl implements Session {
     private static List<ModificationItem> fromEntityToModificationItems(Object entity) {
         List<ModificationItem> mods = new ArrayList<ModificationItem>();
         
-        EntityMetaData metaData = EntityMetaData.get(ClassHelper.actualClass(entity.getClass()));
-        Set<String> modifiedJavaBeanPropNames = ProxyFactory.getModifiedPropNames(entity);
+        EntityMetaData metaData = EntityMetaData.get(ClassHelper.actualClass(entity));
+        Set<String> modifiedJavaBeanPropNames = EntityProxyFactory.getModifiedPropNames(entity);
         if (!CollectionUtils.isEmpty(modifiedJavaBeanPropNames)) {
             LogUtils.debug(LOG, "found modified properties for " + DnHelper.build(entity) + ": " + modifiedJavaBeanPropNames);
             
             // single valued properties
             for (String javaBeanPropName : modifiedJavaBeanPropNames) {
-                PropertyMetaData propMetaData = metaData.getPropertyByJavaBeanPropName(javaBeanPropName);
+                EntityPropertyMetaData propMetaData = metaData.getPropertyByJavaBeanPropName(javaBeanPropName);
                 if (propMetaData.isReadonly() || propMetaData.isMultiple()) {
                     continue;
                 }
@@ -452,7 +711,7 @@ public class SessionImpl implements Session {
         }
         
         // multiple valued properties
-        for (PropertyMetaData propMetaData : metaData) {
+        for (EntityPropertyMetaData propMetaData : metaData) {
             if (propMetaData.isReadonly() || !propMetaData.isMultiple()) {
                 continue;
             }
@@ -477,12 +736,12 @@ public class SessionImpl implements Session {
     
     private <T> T fromAttributesToEntity(Class<T> clazz, Attributes attributes) throws NamingException {
         try {
-            Map.Entry<Object, SetterInterceptor> pair = ProxyFactory.getProxiedEntity(clazz);
+            Map.Entry<Object, SetterInterceptor> pair = EntityProxyFactory.getProxiedEntity(clazz);
             T entity = (T) pair.getKey();
             
             EntityMetaData metaData = EntityMetaData.get(clazz);
             Set<String> multipleLdapAttrNames = new HashSet<String>();
-            for (PropertyMetaData propMetaData : metaData) {
+            for (EntityPropertyMetaData propMetaData : metaData) {
                 if (propMetaData.isMultiple()) {
                     multipleLdapAttrNames.add(propMetaData.getLdapPropName());
                 }
@@ -491,7 +750,7 @@ public class SessionImpl implements Session {
             for (NamingEnumeration<? extends Attribute> attrs = attributes.getAll(); attrs.hasMore();) {
                 Attribute attr = attrs.next();
     
-                PropertyMetaData propMetaData = metaData.getProperty(attr.getID());
+                EntityPropertyMetaData propMetaData = metaData.getProperty(attr.getID());
                 if (null == propMetaData) {
                     // current attribute exist in LDAP but not defined in our
                     // POJO.
@@ -526,12 +785,12 @@ public class SessionImpl implements Session {
                     } else {
                         final Class<?> referenceType = propMetaData.getValueClass();
                         if (!propMetaData.isMultiple()) {
-                            propMetaData.setter().set(entity, ProxyFactory.getLazyLoadingProxiedEntity(referenceType, attrValues.get(0)));
+                            propMetaData.setter().set(entity, EntityProxyFactory.getLazyLoadingProxiedEntity(this, referenceType, attrValues.get(0)));
     
                         } else {
                             List references = new ArrayList();
                             for (String dn : attrValues) {
-                                references.add(ProxyFactory.getLazyLoadingProxiedEntity(referenceType, dn));
+                                references.add(EntityProxyFactory.getLazyLoadingProxiedEntity(this, referenceType, dn));
                             }
                             propMetaData.setter().set(entity, new MoniteredList(references));
                             multipleLdapAttrNames.remove(propMetaData.getLdapPropName());
@@ -557,9 +816,23 @@ public class SessionImpl implements Session {
             return entity;
         
         } catch (NamingException e) {
-            LogUtils.debug(LOG, "failed to go through attributes");
+            LogUtils.debug(LOG, "failed to go through attributes when fromAttributesToEntity");
             throw e;
         }
+    }
+
+    private Map<String, Object> fromAttributesToMap(Attributes attributes) throws NamingException {
+    	try {
+    		Map<String, Object> map = new HashMap<String, Object>();
+	    	for (NamingEnumeration<? extends Attribute> attrs = attributes.getAll(); attrs.hasMore();) {
+	    		Attribute attr = attrs.next();
+	    		map.put(attr.getID(), AttrUtils.valuesAsObject(attr));
+	    	}
+	    	return map;
+    	} catch (NamingException e) {
+    		LogUtils.debug(LOG, "failed to go through attributes when fromAttributesToMap");
+    		throw e;
+    	}
     }
     
     private Map<String, Object> fromAttributesToMap(Class<?> clazz, Attributes attributes) throws NamingException {
@@ -569,7 +842,7 @@ public class SessionImpl implements Session {
             for (NamingEnumeration<? extends Attribute> attrs = attributes.getAll(); attrs.hasMore();) {
                 Attribute attr = attrs.next();
                 
-                PropertyMetaData propMetaData = metaData.getProperty(attr.getID());
+                EntityPropertyMetaData propMetaData = metaData.getProperty(attr.getID());
                 if (null == propMetaData) {
                     continue;
                 }
@@ -589,9 +862,46 @@ public class SessionImpl implements Session {
             return map;
             
         } catch (NamingException e) {
-            LogUtils.debug(LOG, "failed to go through attributes");
+            LogUtils.debug(LOG, "failed to go through attributes when fromAttributesToMap");
             throw e;
         }
+    }
+    
+    private <T> T fromAttributesToIndirections(Class<T> clazz, Attributes attributes) throws NamingException {
+    	try {
+    		OneMetaData oneMetaData = IndirectionsMetaData.get(clazz).getOne();
+    		
+	    	Attribute idAttr = attributes.get(oneMetaData.getIdAttr());
+			Attribute indirectionAttr = attributes.get(oneMetaData.getIndirectionAttr());
+	    	
+			T indirections = null;
+			try {
+				indirections = clazz.newInstance();
+				
+				String dnOfOne = oneMetaData.getIdAttr() + "=" + String.valueOf(idAttr.get()) + "," + oneMetaData.getContext();
+				// @One won't be multiple.
+				oneMetaData.setter().set(indirections, dnOfOne);
+				
+				// @TheOther is always multiple.
+				TheOtherMetaData theOtherMetaData = IndirectionsMetaData.get(clazz).getTheOther();
+				if (null != indirectionAttr) {
+					theOtherMetaData.setter().set(indirections, new MoniteredList(AttrUtils.values(indirectionAttr)));
+				} else {
+					theOtherMetaData.setter().set(indirections, new MoniteredList());
+				}
+				
+			} catch (InstantiationException e) {
+				LogUtils.error(LOG, "cannot instantiate " + clazz, e);
+			} catch (IllegalAccessException e) {
+				LogUtils.error(LOG, "cannot instantiate " + clazz, e);
+			}
+			
+			return IndirectionsProxyFactory.getProxiedIndirections(indirections);
+			
+    	} catch (NamingException e) {
+    		LogUtils.debug(LOG, "failed to go through attributes when fromAttributesToIndirections");
+    		throw e;
+    	}
     }
     
     private static final Evaluator<String> DN_EVALUATOR = new Evaluator<String>() {
@@ -618,8 +928,8 @@ public class SessionImpl implements Session {
     @SuppressWarnings("serial")
     private static class MoniteredList<E> extends ArrayList<E> {
         
-        private List<E> added = new ArrayList<E>();
-        private List<E> removed = new ArrayList<E>();
+        private TreeSet<E> added = new TreeSet<E>();
+        private TreeSet<E> removed = new TreeSet<E>();
         
         public MoniteredList() {
             super();
@@ -632,7 +942,9 @@ public class SessionImpl implements Session {
         @Override
         public boolean add(E e) {
             boolean retVal = super.add(e);
-            added.add(e);
+            if (retVal) {
+            	added.add(e);
+            }
             return retVal;
         }
         
@@ -645,14 +957,18 @@ public class SessionImpl implements Session {
         @Override
         public boolean addAll(Collection<? extends E> c) {
             boolean retVal = super.addAll(c);
-            added.addAll(c);
+            if (retVal) { 
+            	added.addAll(c);
+            }
             return retVal;
         }
         
         @Override
         public boolean addAll(int index, Collection<? extends E> c) {
             boolean retVal = super.addAll(index, c);
-            added.addAll(c);
+            if (retVal) {
+            	added.addAll(c);
+            }
             return retVal;
         }
         
@@ -667,7 +983,9 @@ public class SessionImpl implements Session {
         @Override
         public boolean remove(Object o) {
             boolean retVal = super.remove(o);
-            removed.add((E) o);
+            if (retVal) {
+            	removed.add((E) o);
+            }
             return retVal;
         }
         
@@ -675,7 +993,9 @@ public class SessionImpl implements Session {
         @Override
         public boolean removeAll(Collection<?> c) {
             boolean retVal = super.removeAll(c);
-            removed.addAll((Collection<? extends E>) c);
+            if (retVal) {
+            	removed.addAll((Collection<? extends E>) c);
+            }
             return retVal;
         }
         
@@ -699,6 +1019,5 @@ public class SessionImpl implements Session {
         }
         
     }
-
     
 }

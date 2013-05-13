@@ -18,7 +18,7 @@
  */
 package org.swordess.ldap.odm.core;
 
-import org.swordess.ldap.odm.metadata.EntityMetaData;
+import org.swordess.ldap.odm.metadata.entity.EntityMetaData;
 
 
 public class DnHelper {
@@ -51,7 +51,7 @@ public class DnHelper {
             return null;
         }
         
-        Class<?> actualClass = ClassHelper.actualClass(entity.getClass());
+        Class<?> actualClass = ClassHelper.actualClass(entity);
         EntityMetaData metaData = EntityMetaData.get(actualClass);
         String idName = metaData.getIdProperty().getLdapPropName();
         String idValue = metaData.getIdProperty().getter().get(entity).toString();

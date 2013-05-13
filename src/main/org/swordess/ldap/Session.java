@@ -159,6 +159,8 @@ public interface Session {
      */
     public void create(Object obj);
     
+    public void createIndirections(Object obj);
+    
     /**
      * Update an entity.
      * <p/>
@@ -194,6 +196,8 @@ public interface Session {
      */
     public void update(Object entity);
     
+    public void updateIndirections(Object indirections);
+    
     /**
      * Delete an entry via the given dn.
      * 
@@ -207,6 +211,8 @@ public interface Session {
      * @param entity a persistent entity
      */
     public void delete(Object entity);
+    
+    public void deleteIndirections(Object indirections);
     
     /**
      * Lookup for an entity with all the defined attributes via the specified
@@ -289,6 +295,12 @@ public interface Session {
      */
     public List<Map<String, Object>> search(Class<?> clazz, String filter, String[] returningAttrs);
     
+    public List<Map<String, Object>> search(String context, String filter, String[] returningAttrs);
+    
+    public List<String> lookup(String context, String filter);
+    
+    public <T> List<T> searchIndirections(Class<T> clazz, String filter);
+    
     /**
      * Search for a unique result via the given filter. If there are actually
      * multiple results, the first one will be returned.
@@ -330,6 +342,8 @@ public interface Session {
      * @return
      */
     public Map<String, Object> uniqueSearch(Class<?> clazz, String filter, String[] returningAttrs);
+    
+    public <T> T uniqueSearchIndirections(Class<T> clazz, String filter);
     
     /**
      * Clear session cache if has and release resources this session occupies.
