@@ -22,7 +22,7 @@ import junit.framework.TestCase;
 
 import org.swordess.ldap.Session;
 import org.swordess.ldap.SessionFactory;
-import org.swordess.ldap.odm.core.DefaultSessionFactory;
+import org.swordess.ldap.odm.core.ClassPathPropertiesSessionFactory;
 import org.swordess.ldap.odm.core.DnHelper;
 
 
@@ -39,7 +39,7 @@ public class SessionDemo extends TestCase {
 		 * More details, please refer to
 		 * org.swordess.ldap.odm.core.DefaultSessionFactory
 		 */
-		SessionFactory sessionFactory = DefaultSessionFactory.getDefaultFactory();
+		SessionFactory sessionFactory = ClassPathPropertiesSessionFactory.getInstance();
 		
 		/*
 		 * We recommend to use try-finally block to release resources occupied
@@ -81,7 +81,7 @@ public class SessionDemo extends TestCase {
 		/*
 		 * Use the default SessionFactory.
 		 */
-		SessionFactory sessionFactory = DefaultSessionFactory.getDefaultFactory();
+		SessionFactory sessionFactory = ClassPathPropertiesSessionFactory.getInstance();
 		
 		/*
 		 * An alternative approach to release resources of a Session.
