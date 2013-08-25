@@ -2,3 +2,5 @@
 ## do not impact other session factory's configuration
 
 ## javadoc Indirections related java source files
+
+## TODO currently only Set are used for multiple values, are there any need to support List type as well?

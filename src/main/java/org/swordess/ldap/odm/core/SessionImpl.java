@@ -20,13 +20,12 @@ package org.swordess.ldap.odm.core;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeSet;
 
 import javax.naming.NameNotFoundException;
 import javax.naming.NamingEnumeration;
@@ -52,11 +51,11 @@ import org.swordess.ldap.odm.metadata.indirections.IndirectionsMetaData;
 import org.swordess.ldap.odm.metadata.indirections.OneMetaData;
 import org.swordess.ldap.odm.metadata.indirections.TheOtherMetaData;
 import org.swordess.ldap.util.AttrUtils;
+import org.swordess.ldap.util.ChangeObservedSet;
 import org.swordess.ldap.util.CollectionUtils;
 import org.swordess.ldap.util.Evaluator;
 import org.swordess.ldap.util.LogUtils;
 import org.swordess.ldap.util.ModUtils;
-
 
 
 public class SessionImpl implements Session {
@@ -123,7 +122,7 @@ public class SessionImpl implements Session {
     	
     	IndirectionsMetaData metaData = IndirectionsMetaData.get(indirections.getClass());
     	String one = metaData.getOne().getter().get(indirections);
-    	List<String> theOther = metaData.getTheOther().getter().get(indirections);
+    	Set<String> theOther = metaData.getTheOther().getter().get(indirections);
     	
     	if (StringUtils.isEmpty(one) || CollectionUtils.isEmpty(theOther)) {
     		LogUtils.debug(LOG, "either one or theOthere is empty, do nothing");
@@ -177,13 +176,13 @@ public class SessionImpl implements Session {
                     continue;
                 }
                 
-                List propValues = (List) propValue;
-                if (propValues instanceof MoniteredList) {
-                    // clear changes of all the modifed MoniteredList
-                    ((MoniteredList)propValues).clearChanges();
+                Set propValues = (Set) propValue;
+                if (propValues instanceof ChangeObservedSet) {
+                    // clear changes of all the modified ChangeObservedSet
+                    ((ChangeObservedSet)propValues).clearChanges();
                 } else {
-                    // turn normal List into MoniteredList
-                    propMetaData.setter().set(entity, new MoniteredList(propValues));
+                    // turn normal List into ChangeObservedSet
+                    propMetaData.setter().set(entity, new ChangeObservedSet(propValues));
                 }
             }
             
@@ -210,10 +209,10 @@ public class SessionImpl implements Session {
     	
     	IndirectionsMetaData metaData = IndirectionsMetaData.get(ClassHelper.actualClass(indirections));
     	String one = metaData.getOne().getter().get(indirections);
-    	List<String> theOther = metaData.getTheOther().getter().get(indirections);
+    	Set<String> theOther = metaData.getTheOther().getter().get(indirections);
     	
     	String originalOne = IndirectionsProxyFactory.getOriginalOne(indirections);
-    	List<String> originalTheOther = IndirectionsProxyFactory.getOriginalTheOther(indirections);
+    	Set<String> originalTheOther = IndirectionsProxyFactory.getOriginalTheOther(indirections);
     	
     	if (StringUtils.isEmpty(one) || CollectionUtils.isEmpty(theOther)) {
         	if (StringUtils.isEmpty(one) && CollectionUtils.isEmpty(theOther)) {
@@ -223,15 +222,15 @@ public class SessionImpl implements Session {
         	
     	} else {
     		if (one.equals(originalOne)) {
-    			List<String> removed, added;
-    			if (theOther instanceof MoniteredList) {
-    				MoniteredList<String> monitered = (MoniteredList<String>) theOther;
-    				removed = monitered.getRemovedElements();
-    				added = monitered.getAddedElements();
+    			Set<String> removed, added;
+    			if (theOther instanceof ChangeObservedSet) {
+    				ChangeObservedSet<String> observed = (ChangeObservedSet<String>) theOther;
+    				removed = observed.getRemovedElements();
+    				added = observed.getAddedElements();
     			} else {
-    				removed = new ArrayList<String>(originalTheOther);
+    				removed = new LinkedHashSet<String>(originalTheOther);
     				removed.removeAll(theOther);
-    				added = new ArrayList<String>(theOther);
+    				added = new LinkedHashSet<String>(theOther);
     				added.removeAll(originalTheOther);
     			}
     			
@@ -249,10 +248,10 @@ public class SessionImpl implements Session {
 
         	IndirectionsProxyFactory.refreshOriginals(indirections);
         	if (null != theOther) {
-        		if (theOther instanceof MoniteredList) {
-            		((MoniteredList)theOther).clearChanges();
+        		if (theOther instanceof ChangeObservedSet) {
+            		((ChangeObservedSet)theOther).clearChanges();
             	} else {
-            		metaData.getTheOther().setter().set(indirections, new MoniteredList(theOther));
+            		metaData.getTheOther().setter().set(indirections, new ChangeObservedSet(theOther));
             	}
         	}
     	}
@@ -306,7 +305,7 @@ public class SessionImpl implements Session {
     	
     	IndirectionsMetaData metaData = IndirectionsMetaData.get(ClassHelper.actualClass(indirections));
     	String one;
-    	List<String> theOther;
+    	Set<String> theOther;
     	
     	if (indirections instanceof Persistent) {
     		one = IndirectionsProxyFactory.getOriginalOne(indirections);
@@ -583,7 +582,7 @@ public class SessionImpl implements Session {
         }
     }
     
-    private void connectIndirections(IndirectionsMetaData metaData, String oneDN, List<String> theOtherDNs) {
+    private void connectIndirections(IndirectionsMetaData metaData, String oneDN, Set<String> theOtherDNs) {
     	if (StringUtils.isEmpty(oneDN) || CollectionUtils.isEmpty(theOtherDNs)) {
     		LogUtils.debug(LOG, "connectIndirections: either one or theOther is empty, do nothing.");
     		return;
@@ -614,7 +613,7 @@ public class SessionImpl implements Session {
     	}
     }
     
-    private void disconnectIndirections(IndirectionsMetaData metaData, String oneDN, List<String> theOtherDNs) {
+    private void disconnectIndirections(IndirectionsMetaData metaData, String oneDN, Set<String> theOtherDNs) {
     	if (StringUtils.isEmpty(oneDN) || CollectionUtils.isEmpty(theOtherDNs)) {
     		LogUtils.debug(LOG, "disconnectIndirections: either one or theOther is empty, do nothing.");
     		return;
@@ -722,10 +721,10 @@ public class SessionImpl implements Session {
                 mods.add(ModUtils.remove(propMetaData.getLdapPropName()));
             } else {
                 Evaluator<String> evaluator = createPropEvaluator(propMetaData);
-                if (propValues instanceof MoniteredList) {
-                    MoniteredList moniteredList = (MoniteredList) propValues;
-                    CollectionUtils.addIfNotNull(mods, ModUtils.add(propMetaData.getLdapPropName(), moniteredList.getAddedElements(), evaluator));
-                    CollectionUtils.addIfNotNull(mods, ModUtils.remove(propMetaData.getLdapPropName(), moniteredList.getRemovedElements(), evaluator));
+                if (propValues instanceof ChangeObservedSet) {
+                	ChangeObservedSet observed = (ChangeObservedSet) propValues;
+                    CollectionUtils.addIfNotNull(mods, ModUtils.add(propMetaData.getLdapPropName(), observed.getAddedElements(), evaluator));
+                    CollectionUtils.addIfNotNull(mods, ModUtils.remove(propMetaData.getLdapPropName(), observed.getRemovedElements(), evaluator));
                 } else {
                     CollectionUtils.addIfNotNull(mods, ModUtils.replace(propMetaData.getLdapPropName(), propValues, evaluator));
                 }
@@ -765,30 +764,30 @@ public class SessionImpl implements Session {
                     }
                     
                 } else {
-                    List<String> attrValues = new ArrayList<String>();
+                    Set<String> attrValues = new LinkedHashSet<String>();
                     for (NamingEnumeration<?> all = attr.getAll(); all.hasMore();) {
                         attrValues.add(propMetaData.getSyntaxer().ldapStringToJavaString(all.next().toString()));
                     }
     
                     if (!propMetaData.isReference()) {
                         if (!propMetaData.isMultiple()) {
-                            propMetaData.setter().set(entity, attrValues.get(0));
+                            propMetaData.setter().set(entity, attrValues.iterator().next());
                         } else {
-                            propMetaData.setter().set(entity, new MoniteredList<String>(attrValues));
+                            propMetaData.setter().set(entity, new ChangeObservedSet<String>(attrValues));
                             multipleLdapAttrNames.remove(propMetaData.getLdapPropName());
                         }
     
                     } else {
                         final Class<?> referenceType = propMetaData.getValueClass();
                         if (!propMetaData.isMultiple()) {
-                            propMetaData.setter().set(entity, EntityProxyFactory.getLazyLoadingProxiedEntity(this, referenceType, attrValues.get(0)));
+                            propMetaData.setter().set(entity, EntityProxyFactory.getLazyLoadingProxiedEntity(this, referenceType, attrValues.iterator().next()));
     
                         } else {
-                            List references = new ArrayList();
+                            Set references = new LinkedHashSet();
                             for (String dn : attrValues) {
                                 references.add(EntityProxyFactory.getLazyLoadingProxiedEntity(this, referenceType, dn));
                             }
-                            propMetaData.setter().set(entity, new MoniteredList(references));
+                            propMetaData.setter().set(entity, new ChangeObservedSet(references));
                             multipleLdapAttrNames.remove(propMetaData.getLdapPropName());
                         }
                     }
@@ -800,7 +799,7 @@ public class SessionImpl implements Session {
                  * occurred to these attributes, we need to use MoniteredList.
                  */
                 for (String notPresentedMultipleLdapAttrName : multipleLdapAttrNames) {
-                    metaData.getProperty(notPresentedMultipleLdapAttrName).setter().set(entity, new MoniteredList());
+                    metaData.getProperty(notPresentedMultipleLdapAttrName).setter().set(entity, new ChangeObservedSet(new LinkedHashSet()));
                 }
             }
             
@@ -881,9 +880,9 @@ public class SessionImpl implements Session {
 				// @TheOther is always multiple.
 				TheOtherMetaData theOtherMetaData = IndirectionsMetaData.get(clazz).getTheOther();
 				if (null != indirectionAttr) {
-					theOtherMetaData.setter().set(indirections, new MoniteredList(AttrUtils.values(indirectionAttr)));
+					theOtherMetaData.setter().set(indirections, new ChangeObservedSet(new LinkedHashSet(AttrUtils.values(indirectionAttr))));
 				} else {
-					theOtherMetaData.setter().set(indirections, new MoniteredList());
+					theOtherMetaData.setter().set(indirections, new ChangeObservedSet(new LinkedHashSet()));
 				}
 				
 			} catch (InstantiationException e) {
@@ -931,8 +930,9 @@ public class SessionImpl implements Session {
      * A list which provides additional features for monitoring element
      * additions and removals.
      */
+    /*
     @SuppressWarnings("serial")
-    private static class MoniteredList<E> extends ArrayList<E> {
+    static class MoniteredList<E> extends ArrayList<E> {
         
         private TreeSet<E> added = new TreeSet<E>();
         private TreeSet<E> removed = new TreeSet<E>();
@@ -1013,17 +1013,13 @@ public class SessionImpl implements Session {
             return new ArrayList<E>(removed);
         }
         
-        /**
-         * This method will be called once an entity has been updated
-         * successfully. The changes must be cleared because we want to reuse
-         * the entity this list belongs to. The reason is, if not cleared, the
-         * changes will be gathered the next time when updating.
-         */
+        
         public void clearChanges() {
             added.clear();
             removed.clear();
         }
         
     }
+	*/
     
 }

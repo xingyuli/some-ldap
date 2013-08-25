@@ -3,8 +3,8 @@ package org.swordess.ldap.odm.core;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import net.sf.cglib.core.ClassGenerator;
 import net.sf.cglib.core.DefaultGeneratorStrategy;
@@ -16,9 +16,9 @@ import net.sf.cglib.transform.impl.AddPropertyTransformer;
 import org.objectweb.asm.Type;
 import org.swordess.ldap.odm.ODMException;
 import org.swordess.ldap.odm.core.SessionImpl.Persistent;
-import org.swordess.ldap.odm.metadata.indirections.TheOtherMetaData;
-import org.swordess.ldap.odm.metadata.indirections.OneMetaData;
 import org.swordess.ldap.odm.metadata.indirections.IndirectionsMetaData;
+import org.swordess.ldap.odm.metadata.indirections.OneMetaData;
+import org.swordess.ldap.odm.metadata.indirections.TheOtherMetaData;
 
 public class IndirectionsProxyFactory extends ProxyFactory {
 
@@ -55,7 +55,7 @@ public class IndirectionsProxyFactory extends ProxyFactory {
 			protected ClassGenerator transform(ClassGenerator cg) throws Exception {
 				return new TransformingClassGenerator(cg, new AddPropertyTransformer(
 						new String[] { ORIGINAL_ONE, ORIGINAL_THE_OTHER },
-						new Type[] { Type.getType(String.class), Type.getType(List.class) }
+						new Type[] { Type.getType(String.class), Type.getType(Set.class) }
 					));
 			}
     	});
@@ -77,7 +77,7 @@ public class IndirectionsProxyFactory extends ProxyFactory {
     	try {
     		T indirections = (T) proxyFactory.factory.newInstance(NoOp.INSTANCE);
     		String originalOne = oneMetaData.getter().get(unproxied);
-    		List<String> originalTheOther = theOtherMetaData.getter().get(unproxied);
+    		Set<String> originalTheOther = theOtherMetaData.getter().get(unproxied);
     		
     		proxyFactory.originalOne.set(indirections, originalOne);
     		// make a copy, so that the coming changes will not impact it.
@@ -106,13 +106,13 @@ public class IndirectionsProxyFactory extends ProxyFactory {
     }
     
     @SuppressWarnings("unchecked")
-	static List<String> getOriginalTheOther(Object indirections) {
+	static Set<String> getOriginalTheOther(Object indirections) {
     	if (null == indirections) {
     		return null;
     	}
     	
     	try {
-    		return (List<String>) getFactory(ClassHelper.actualClass(indirections)).originalTheOther.get(indirections);
+    		return (Set<String>) getFactory(ClassHelper.actualClass(indirections)).originalTheOther.get(indirections);
     	} catch (Throwable t) {
     		throw new ODMException("Can not read originalTheOther from " + indirections);
     	}

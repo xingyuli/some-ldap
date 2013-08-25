@@ -4,6 +4,7 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
 
 import org.apache.commons.lang.StringUtils;
 import org.swordess.ldap.bean.Getter;
@@ -32,7 +33,7 @@ public class TheOtherMetaData implements RawPropertyMetaDataInterface, Iterable<
 
 	@SuppressWarnings("unchecked")
 	@Override
-	public Getter<List<String>> getter() {
+	public Getter<Set<String>> getter() {
 		return delegation.getter();
 	}
 

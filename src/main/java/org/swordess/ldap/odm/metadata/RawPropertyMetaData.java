@@ -56,11 +56,11 @@ public class RawPropertyMetaData implements RawPropertyMetaDataInterface {
     
     private void determineAttributeType(Method getterMethod) {
         Class<?> propertyType = getterMethod.getReturnType();
-        if (Set.class.isAssignableFrom(propertyType)) {
-            throw new MetaDataException(String.format("Only lists are allowed for multivlaued attributes, error in property %1$s in class %2$s", 
+        if (List.class.isAssignableFrom(propertyType)) {
+            throw new MetaDataException(String.format("Only sets are allowed for multivlaued attributes, error in property %1$s in class %2$s", 
                     javaBeanPropName, getterMethod.getDeclaringClass()));
         }
-        isMultiple = List.class.isAssignableFrom(propertyType);
+        isMultiple = Set.class.isAssignableFrom(propertyType);
         
         valueClass = null;
         if (!isMultiple) {
