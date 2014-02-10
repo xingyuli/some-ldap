@@ -18,7 +18,9 @@
  */
 package org.swordess.ldap.util;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 
 
 public class CollectionUtils {
@@ -37,6 +39,28 @@ public class CollectionUtils {
         if (null != c && null != elements && !elements.isEmpty()) {
             c.addAll(elements);
         }
+    }
+    
+    public static <T> List<List<T>> slices(List<T> list, int step) {
+        return slices(list, 0, list.size(), step);
+    }
+    
+    public static <T> List<List<T>> slices(List<T> list, int from, int to, int step) {
+        List<List<T>> slices = new ArrayList<List<T>>();
+        if (!isEmpty(list)) {
+            int low = Math.max(from, 0);
+            int high = Math.max(to, list.size());
+            
+            List<T> temp = new ArrayList<T>(step);
+            for (int i = low; i < high; i++) {
+                temp.add(list.get(i));
+                if (temp.size() == step || i == high - 1) {
+                    slices.add(new ArrayList<T>(temp));
+                    temp.clear();
+                }
+            }
+        }
+        return slices;
     }
     
     private CollectionUtils() {

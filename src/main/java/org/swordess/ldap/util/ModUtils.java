@@ -134,7 +134,11 @@ public class ModUtils {
         return mods;
     }
     
-    private static <T> ModificationItem create(int operationMod, String id, Object value, Evaluator<T> evaluator) {
+    public static <T> ModificationItem create(int operationMod, String id, Object value) {
+    	return create(operationMod, id, value, null);
+    }
+    
+    public static <T> ModificationItem create(int operationMod, String id, Object value, Evaluator<T> evaluator) {
         if (null == value) {
             return null;
         }
@@ -147,7 +151,11 @@ public class ModUtils {
         }
     }
     
-    private static <T> ModificationItem create(int operationMod, String id, Object[] values, Evaluator<T> evaluator) {
+    public static <T> ModificationItem create(int operationMod, String id, Object[] values) {
+    	return create(operationMod, id, values, null);
+    }
+    
+    public static <T> ModificationItem create(int operationMod, String id, Object[] values, Evaluator<T> evaluator) {
         if (ArrayUtils.isEmpty(values)) {
             return null;
         }
@@ -178,7 +186,11 @@ public class ModUtils {
         return hasOneNotNullAtLeast ? new ModificationItem(operationMod, attr) : null;
     }
     
-    private static <T> ModificationItem create(int operationMod, String id, Collection<?> values, Evaluator<T> evaluator) {
+    public static <T> ModificationItem create(int operationMod, String id, Collection<?> values) {
+    	return create(operationMod, id, values, null);
+    }
+    
+    public static <T> ModificationItem create(int operationMod, String id, Collection<?> values, Evaluator<T> evaluator) {
         if (CollectionUtils.isEmpty(values)) {
             return null;
         }
